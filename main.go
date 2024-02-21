@@ -47,7 +47,7 @@ func main() {
 		return
 	}
 
-	jobWorker := client.NewJobWorker().JobType("get-time").Handler(HandleJob).Open()
+	jobWorker := client.NewJobWorker().JobType("get-time").Handler(handleJobPaymentService).Open()
 
 	<-readyClose
 	jobWorker.Close()
@@ -108,24 +108,28 @@ func CreateProcessInstance(ctx context.Context, client zbc.Client) error {
 	return nil
 }
 
-func HandleJob(client worker.JobClient, job entities.Job) {
+func handleJobPaymentService(client worker.JobClient, job entities.Job) {
 	jobKey := job.GetKey()
 
 	headers, err := job.GetCustomHeadersAsMap()
 	if err != nil {
 		// failed to handle job as we require the custom job headers
-		if err := failJob(client, job); err != nil {
-			log.Println("Error when fail job: " + err.Error())
-		}
+		failJob(client, job)
 		return
 	}
 
 	variables, err := job.GetVariablesAsMap()
 	if err != nil {
 		// failed to handle job as we require the variables
-		if err := failJob(client, job); err != nil {
-			log.Println("Error when fail job: " + err.Error())
-		}
+		failJob(client, job)
+		return
+	}
+
+	variables["totalPrice"] = 46.50
+	request, err := client.NewCompleteJobCommand().JobKey(jobKey).VariablesFromMap(variables)
+	if err != nil {
+		// failed to set the updated variables
+		failJob(client, job)
 		return
 	}
 
@@ -134,22 +138,21 @@ func HandleJob(client worker.JobClient, job entities.Job) {
 	log.Println("Collect money using payment method:", headers["method"])
 
 	ctx := context.Background()
-	_, err = client.NewCompleteJobCommand().JobKey(job.Key).Send(ctx)
+	_, err = request.Send(ctx)
 	if err != nil {
-		return
+		panic(err)
 	}
 
 	log.Println("Successfully completed job")
 	close(readyClose)
 }
 
-func failJob(client worker.JobClient, job entities.Job) error {
+func failJob(client worker.JobClient, job entities.Job) {
 	log.Println("Failed to complete job", job.GetKey())
+
 	ctx := context.Background()
 	_, err := client.NewFailJobCommand().JobKey(job.GetKey()).Retries(job.Retries - 1).Send(ctx)
 	if err != nil {
-		return err
+		panic(err)
 	}
-
-	return nil
 }

@@ -56,7 +56,7 @@ func main() {
 }
 
 func DeployResource(ctx context.Context, client zbc.Client) error {
-	response, err := client.NewDeployResourceCommand().AddResourceFile("resources/test-process.bpmn").Send(ctx)
+	response, err := client.NewDeployResourceCommand().AddResourceFile("resources/order-process.bpmn").Send(ctx)
 	if err != nil {
 		return err
 	}
